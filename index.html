@@ -13,29 +13,28 @@
     .spinner { width: 40px; height: 40px; border: 4px solid #333; border-top-color: #f59e0b; border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
     h1 { font-size: 20px; font-weight: 700; margin: 0; }
-    p { font-size: 14px; color: #888; margin: 0; }
+    p { font-size: 14px; color: #888; margin: 0; text-align: center; }
     a { color: #f59e0b; }
   </style>
 </head>
 <body>
   <div class="spinner"></div>
   <h1>LabCore</h1>
-  <p id="status">Opening specimen...</p>
+  <p id="status">Opening...</p>
   <script>
     // LabCore QR Scan Redirect
-    // URL format: https://labcore-scan.example.com/SP-001002 or /PAL-001
+    // URL: https://calm-mushroom-0f00e1e03.2.azurestaticapps.net/SP-001002
     //
-    // This page saves the scan code to localStorage and redirects to the Power Apps app.
-    // The app reads localStorage on mount and navigates to the right page.
+    // Strategy: save scan code in MULTIPLE places so the app can find it,
+    // then redirect to the Power Apps URL.
 
     const APP_URL = 'https://apps.powerapps.com/play/e/349f8ea3-3c69-e1eb-9a63-1b599a274140/app/18848aa6-b9db-42e2-931a-a71550492bdf?tenantId=7cc6f684-1619-49fb-be6f-9a9d9afe38eb';
 
     const path = window.location.pathname.replace(/^\//, '').replace(/\/$/, '');
 
     if (path) {
-      // Detect type from prefix
       let scanData;
-      if (path.startsWith('PAL-') || path.startsWith('pal-')) {
+      if (path.toUpperCase().startsWith('PAL-') || path.toUpperCase().startsWith('PAL')) {
         scanData = 'pallet:' + path;
         document.getElementById('status').textContent = 'Opening pallet ' + path + '...';
       } else {
@@ -43,10 +42,28 @@
         document.getElementById('status').textContent = 'Opening specimen ' + path + '...';
       }
 
-      localStorage.setItem('labcore-scan', scanData);
-      window.location.href = APP_URL;
+      // Save in localStorage (works if same browser context)
+      try { localStorage.setItem('labcore-scan', scanData); } catch(e) {}
+
+      // Save in sessionStorage too
+      try { sessionStorage.setItem('labcore-scan', scanData); } catch(e) {}
+
+      // Use BroadcastChannel (works across tabs in same browser)
+      try {
+        const bc = new BroadcastChannel('labcore-scan');
+        bc.postMessage(scanData);
+        // Keep channel open briefly
+        setTimeout(() => bc.close(), 5000);
+      } catch(e) {}
+
+      // Also save as a cookie (accessible across origins on same domain... but different domain here)
+      try { document.cookie = 'labcore-scan=' + encodeURIComponent(scanData) + ';path=/;max-age=60'; } catch(e) {}
+
+      // Redirect to the app
+      setTimeout(function() {
+        window.location.href = APP_URL;
+      }, 300);
     } else {
-      // No code in URL — show instructions
       document.getElementById('status').innerHTML =
         'Scan a LabCore QR code to open a specimen or pallet.<br><br>' +
         '<a href="' + APP_URL + '">Open LabCore app</a>';
